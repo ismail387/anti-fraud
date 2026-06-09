@@ -9,38 +9,32 @@
     <style>
         * { box-sizing: border-box; }
         body { font-family: Arial, sans-serif; padding: 12px; margin: 0; background: #fff; font-size: 13px; }
-        .header { color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-        .status-box { padding: 11px 14px; border-radius: 8px; font-weight: bold; font-size: 13px; text-align: center; color: white; }
-        .status-loading { background: #95a5a6; }
-        .status-clean   { background: #27ae60; }
-        .status-danger  { background: #e74c3c; animation: pulse 1.2s ease-in-out infinite; }
-        .status-error   { background: #e67e22; font-size: 11px; font-weight: normal; }
+        .status-box { padding: 11px 14px; border-radius: 8px; font-weight: bold; font-size: 13px; text-align: center; color: white; background: #95a5a6; }
+        .status-clean  { background: #27ae60 !important; }
+        .status-danger { background: #e74c3c !important; animation: pulse 1.2s ease-in-out infinite; }
+        .status-error  { background: #e67e22 !important; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.82} }
-
-        .info-box { margin-top: 8px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 9px 11px; font-size: 11px; color: #555; line-height: 1.7; }
+        .info-box { margin-top: 8px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 9px 11px; font-size: 11px; color: #555; line-height: 1.8; }
         .info-box b { color: #333; }
-
-        .danger-box { margin-top: 8px; background: #fff5f5; border: 1px solid #fcc; border-radius: 6px; padding: 9px 11px; }
+        .danger-box { margin-top: 8px; background: #fff5f5; border: 1px solid #fcc; border-radius: 6px; padding: 9px 11px; display:none; }
         .danger-title { color: #c0392b; font-weight: bold; font-size: 12px; margin-bottom: 5px; }
         .danger-list { padding-left: 15px; margin: 0; }
         .danger-list li { color: #333; margin-bottom: 3px; font-size: 12px; }
-        .current { color: #888; font-style: italic; }
-
-        .debug { margin-top: 8px; padding: 8px 10px; background: #f0f0f0; border-radius: 5px; font-size: 10px; color: #777; font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto; }
-        .debug-toggle { font-size: 10px; color: #aaa; cursor: pointer; margin-top: 6px; text-align: right; }
+        .debug { margin-top: 8px; padding: 8px 10px; background: #111; color: #0f0; border-radius: 5px; font-size: 10px; font-family: monospace; white-space: pre-wrap; word-break: break-all; min-height: 60px; max-height: 200px; overflow-y: auto; }
+        button { margin-top: 8px; width: 100%; padding: 8px; background: #3498db; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        button:active { background: #2980b9; }
     </style>
 </head>
 <body>
 
-<div class="header">Anti-Fraud Monitor</div>
-<div id="status-box" class="status-box status-loading">Bağlanıyor...</div>
-<div id="info-box" style="display:none" class="info-box"></div>
-<div id="danger-box" style="display:none" class="danger-box">
+<div id="status-box" class="status-box">Yükleniyor...</div>
+<div id="info-box" class="info-box" style="display:none"></div>
+<div id="danger-box" class="danger-box">
     <div class="danger-title">Bu cihazla bağlantılı hesaplar:</div>
     <ul id="danger-list" class="danger-list"></ul>
 </div>
-<div class="debug-toggle" onclick="toggleDebug()">▸ debug</div>
-<div id="debug-box" class="debug" style="display:none"></div>
+<button onclick="manuelSorgu()">Manuel Sorgula</button>
+<div id="debug" class="debug">Başlatılıyor...\n</div>
 
 <script>
     const firebaseConfig = {
@@ -54,141 +48,133 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    let debugLines = [];
+    let widgetRef = null;
+
     function log(msg) {
-        debugLines.push(msg);
-        if (debugLines.length > 30) debugLines.shift();
-        document.getElementById('debug-box').innerText = debugLines.join('\n');
-        console.log('[AntiFraud]', msg);
-    }
-    function toggleDebug() {
-        const el = document.getElementById('debug-box');
-        el.style.display = el.style.display === 'none' ? 'block' : 'none';
-    }
-    function setStatus(type, msg) {
-        const el = document.getElementById('status-box');
-        el.className = 'status-box status-' + type;
-        el.innerText = msg;
-    }
-    function showInfo(lines) {
-        const el = document.getElementById('info-box');
-        el.style.display = 'block';
-        el.innerHTML = lines.map(l => '<b>' + l[0] + ':</b> ' + l[1]).join('<br>');
+        const el = document.getElementById('debug');
+        el.innerText += '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n';
+        el.scrollTop = el.scrollHeight;
+        console.log('[AF]', msg);
     }
 
-    async function sorgulaVeGoster(deviceId, username) {
+    function setStatus(cls, msg) {
+        const el = document.getElementById('status-box');
+        el.className = 'status-box ' + cls;
+        el.innerText = msg;
+    }
+
+    function showInfo(data) {
+        const el = document.getElementById('info-box');
+        el.style.display = 'block';
+        el.innerHTML = Object.entries(data).map(([k,v]) => '<b>' + k + ':</b> ' + (v||'—')).join('<br>');
+    }
+
+    async function sorgulaFirebase(deviceId, username) {
         const ref = db.collection("devices").doc(deviceId);
         await ref.set({
             users: firebase.firestore.FieldValue.arrayUnion(username),
             lastSeen: new Date()
         }, { merge: true });
-
         const doc = await ref.get();
         const users = (doc.data() && doc.data().users) || [];
         const digerler = users.filter(u => u !== username);
-
         if (digerler.length > 0) {
-            setStatus('danger', '🚨 TEHLİKE: ' + users.length + ' hesap aynı cihazda!');
+            setStatus('status-danger', '🚨 TEHLİKE: ' + users.length + ' hesap!');
             document.getElementById('danger-box').style.display = 'block';
             document.getElementById('danger-list').innerHTML = users.map(u =>
-                '<li>' + u + (u === username ? ' <span class="current">(şu anki)</span>' : '') + '</li>'
+                '<li>' + u + (u === username ? ' <em style="color:#888">(şu anki)</em>' : '') + '</li>'
             ).join('');
         } else {
-            setStatus('clean', '✓ Temiz — başka hesap bulunamadı');
+            setStatus('status-clean', '✓ Temiz — başka hesap yok');
             document.getElementById('danger-box').style.display = 'none';
         }
     }
 
-    function cikartVeIsle(profile) {
-        if (!profile) { log('profile null'); return; }
+    function isleProfil(profile) {
+        if (!profile) { log('profile null/undefined'); return; }
+        log('Profile geldi, parse ediliyor...');
 
-        // Tüm profile objesini logla — hangi path'te ne var görelim
-        try { log('RAW: ' + JSON.stringify(profile).substring(0, 600)); } catch(e) {}
+        // RAW dump — hangi key'lerin dolu olduğunu görelim
+        try {
+            const keys = Object.keys(profile);
+            log('Keys: ' + keys.join(', '));
+            // Önemli alanları logla
+            if (profile.name) log('name: ' + profile.name);
+            if (profile.email) log('email: ' + profile.email);
+            if (profile.id) log('id: ' + profile.id);
+            if (profile.variables) log('variables: ' + JSON.stringify(profile.variables));
+            if (profile.customVariables) log('customVariables: ' + JSON.stringify(profile.customVariables));
+            if (profile.geolocation) log('geo.ip: ' + profile.geolocation.ip);
+            if (profile.chat) log('chat keys: ' + Object.keys(profile.chat).join(', '));
+        } catch(e) { log('parse hata: ' + e.message); }
 
-        // ===== USERNAME =====
-        // Ekranda "Integrations data > username: himateks" görünüyordu
-        // Bu genellikle profile.variables veya profile.chat.properties altında gelir
+        // Username çıkar
         let username =
-            // 1. Integrations data (server-side push) — en yaygın path
             (profile.variables && profile.variables.username) ||
-            (profile.integrationVariables && profile.integrationVariables.username) ||
-            // 2. chat.properties (custom variables via API)
-            (profile.chat && profile.chat.properties && profile.chat.properties.custom && profile.chat.properties.custom.username) ||
-            // 3. customVariables array
-            (Array.isArray(profile.customVariables) && (profile.customVariables.find(v => v.key==='username'||v.name==='username') || {}).value) ||
-            // 4. Direkt alanlar
-            profile.name ||
-            profile.email ||
-            null;
+            (profile.customVariables && Array.isArray(profile.customVariables) &&
+                (profile.customVariables.find(v => v.key==='username'||v.name==='username')||{}).value) ||
+            profile.name || profile.email || profile.id || null;
 
-        // ===== DEVICE ID =====
-        // Siteden device_id custom variable olarak gönderiliyorsa buradan gelir
-        // Yoksa IP üzerinden fallback
+        // Device ID çıkar
         let deviceId =
             (profile.variables && profile.variables.device_id) ||
-            (profile.integrationVariables && profile.integrationVariables.device_id) ||
-            (profile.chat && profile.chat.properties && profile.chat.properties.custom && profile.chat.properties.custom.device_id) ||
-            (Array.isArray(profile.customVariables) && (profile.customVariables.find(v => v.key==='device_id'||v.name==='device_id') || {}).value) ||
+            (profile.customVariables && Array.isArray(profile.customVariables) &&
+                (profile.customVariables.find(v => v.key==='device_id'||v.name==='device_id')||{}).value) ||
             null;
 
-        // IP fallback — Technology bölümünde "IP address: 78.190.151.144" görünüyordu
-        const ip = (profile.geolocation && profile.geolocation.ip) ||
-                   (profile.ip) ||
-                   (profile.chat && profile.chat.customer && profile.chat.customer.ip) ||
-                   null;
+        const ip = (profile.geolocation && profile.geolocation.ip) || null;
+        if (!deviceId && ip) deviceId = 'ip_' + ip.replace(/[\.\:]/g, '_');
+        if (!deviceId) deviceId = 'ua_' + btoa(navigator.userAgent).substring(0, 28);
 
-        if (!deviceId && ip) {
-            deviceId = 'ip_' + ip.replace(/[\.\:]/g, '_');
-            log('deviceId yok, IP fallback kullanıldı: ' + deviceId);
-        }
+        log('username=' + username + ' deviceId=' + (deviceId||'').substring(0,20));
+        showInfo({ Kullanıcı: username, 'Cihaz ID': deviceId ? deviceId.substring(0,20)+'...' : null, IP: ip });
 
-        // Browser bilgisinden ek parmak izi
-        if (!deviceId) {
-            const ua = navigator.userAgent;
-            deviceId = 'ua_' + btoa(ua).substring(0, 28);
-            log('IP de yok, UA fallback: ' + deviceId);
-        }
+        if (!username) { setStatus('status-error', 'Username alınamadı'); return; }
 
-        log('username=' + username + ' | deviceId=' + deviceId);
-
-        // Bilgi kutusunu göster
-        showInfo([
-            ['Kullanıcı', username || '—'],
-            ['Cihaz ID', deviceId ? deviceId.substring(0, 24) + '...' : '—'],
-            ['IP', ip || '—']
-        ]);
-
-        if (!username) {
-            setStatus('error', 'Username alınamadı — debug\'a bak');
-            return;
-        }
-
-        sorgulaVeGoster(deviceId, username).catch(err => {
-            setStatus('error', 'Firebase: ' + err.message);
-            log('Firebase hata: ' + err.message);
+        setStatus('', 'Sorgulanıyor...');
+        sorgulaFirebase(deviceId, username).catch(e => {
+            setStatus('status-error', 'Firebase hata');
+            log('Firebase: ' + e.message);
         });
     }
 
-    LiveChat.init({ clientId: 'c5764f84a28fee4c14e289af6afdf9ae' }).then(widget => {
-        log('SDK init OK');
-        setStatus('loading', 'Müşteri bekleniyor...');
+    // Manuel sorgu butonu — widget dışında test için
+    function manuelSorgu() {
+        if (widgetRef) {
+            log('Manuel: widget.get() çağrılıyor...');
+            widgetRef.get('customer_profile').then(p => {
+                log('Manuel get() sonucu: ' + (p ? 'var' : 'null'));
+                isleProfil(p);
+            }).catch(e => log('Manuel get() hata: ' + e.message));
+        } else {
+            log('Widget henüz init olmadı!');
+        }
+    }
 
-        widget.get('customer_profile').then(p => {
-            log('get() resolved');
-            cikartVeIsle(p);
-        }).catch(e => {
-            log('get() rejected: ' + e.message);
+    // SDK init
+    log('LiveChat SDK yükleniyor...');
+    log('SDK version check: ' + (typeof LiveChat));
+
+    LiveChat.init({ clientId: 'c5764f84a28fee4c14e289af6afdf9ae' })
+        .then(widget => {
+            widgetRef = widget;
+            log('SDK INIT OK!');
+            setStatus('', 'Müşteri bekleniyor...');
+
+            widget.get('customer_profile').then(p => {
+                log('get() tamamlandı: ' + (p ? 'profil var' : 'null'));
+                if (p) isleProfil(p);
+            }).catch(e => log('get() hata: ' + e.message));
+
+            widget.on('customer_profile', p => {
+                log('EVENT: customer_profile geldi');
+                isleProfil(p);
+            });
+        })
+        .catch(err => {
+            log('SDK INIT HATA: ' + err.message);
+            setStatus('status-error', 'SDK bağlanamadı: ' + err.message);
         });
-
-        widget.on('customer_profile', p => {
-            log('on() event geldi');
-            cikartVeIsle(p);
-        });
-
-    }).catch(err => {
-        setStatus('error', 'SDK init hatası: ' + err.message);
-        log('SDK hata: ' + err.message);
-    });
 </script>
 </body>
-</html> 
+</html>
