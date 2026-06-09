@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Bahis Sitesi - Oyuncu Giriş Simülatörü</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #eef2f3; padding: 50px; text-align: center; }
+        .card { background: white; padding: 30px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        input, button { padding: 10px; margin: 10px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; }
+        button { background: #3498db; color: white; cursor: pointer; border: none; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>🎰 Sahne Arkası Bahis Sitesi</h2>
+    <p>Sistemi test etmek için farklı isimlerle giriş yapın (Örn: ali1, ali2, ali3)</p>
+    <input type="text" id="usernameInput" placeholder="Kullanıcı Adı Girin">
+    <button onclick="siteyeGirisYap()">Siteye Giriş Yap ve Bonus İste</button>
+    <p id="bilgi-ekrani" style="color: green; font-weight: bold;"></p>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyDnReWZJ3NyU5iLUE2mmNxjRq45g3zpvIE",
+    authDomain: "anti-fraud-system-sj.firebaseapp.com",
+    projectId: "anti-fraud-system-sj",
+    storageBucket: "anti-fraud-system-sj.firebasestorage.app",
+    messagingSenderId: "1058527069626",
+    appId: "1:1058527069626:web:39ca3407412267287a0983"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  async function siteyeGirisYap() {
+    const username = document.getElementById("usernameInput").value.trim();
+    if(!username) return alert("Lütfen bir kullanıcı adı yazın!");
+
+    document.getElementById("bilgi-ekrani").innerText = "Cihaz parmak izi alınıyor...";
+
+    // Yeni kütüphane yapısına uygun olarak burayı güncelledik
+    const fp = await FingerprintJS.load();
+    const result = await fp.get();
+    const cihazId = result.visitorId; 
+
+    const deviceRef = db.collection("devices").doc(cihazId);
+    await deviceRef.set({
+      users: firebase.firestore.FieldValue.arrayUnion(username),
+      lastSeen: new Date()
+    }, { merge: true });
+
+    document.getElementById("bilgi-ekrani").innerText = `Başarılı! ${username} ismiyle giriş yapıldı. Cihazınız sisteme kaydedildi.`;
+  }
+</script>
+</body>
+</html>
